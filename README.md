@@ -2,7 +2,7 @@
 title: Wildfire Containment
 emoji: "\U0001F525"
 colorFrom: red
-colorTo: orange
+colorTo: yellow
 sdk: docker
 app_port: 7860
 tags:

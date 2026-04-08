@@ -113,6 +113,25 @@ def api_state():
     })
 
 
+# ---------------------------------------------------------------------------
+# OpenEnv-compatible routes (no /api prefix) for validator & openenv validate
+# ---------------------------------------------------------------------------
+
+@app.route("/reset", methods=["POST"])
+def openenv_reset():
+    return api_reset()
+
+
+@app.route("/step", methods=["POST"])
+def openenv_step():
+    return api_step()
+
+
+@app.route("/state", methods=["GET"])
+def openenv_state():
+    return api_state()
+
+
 @app.route("/api/agent_step", methods=["POST"])
 def api_agent_step():
     """Let the heuristic AI agent pick and execute an action."""

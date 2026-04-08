@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "wildfire-containment"
+version = "1.0.0"
+description = "Wildfire Containment OpenEnv — AI incident commander managing firefighting resources"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Rupesh Reddy Bandi"},
+]
+dependencies = [
+    "numpy>=1.21.0",
+    "scipy>=1.7.0",
+    "flask>=2.0.0",
+    "pydantic>=2.0.0",
+    "openai>=1.0.0",
+    "pyyaml>=6.0",
+    "openenv-core>=0.2.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0.0"]
+
+[project.scripts]
+server = "server.app:main"
+
+[tool.setuptools.packages.find]
+include = ["src*", "server*"]
