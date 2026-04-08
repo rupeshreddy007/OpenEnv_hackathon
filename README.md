@@ -1,4 +1,15 @@
-# 🔥 Wildfire Containment — OpenEnv Environment
+---
+title: Wildfire Containment
+emoji: "\U0001F525"
+colorFrom: red
+colorTo: orange
+sdk: docker
+app_port: 7860
+tags:
+  - openenv
+---
+
+# Wildfire Containment — OpenEnv Environment
 
 An OpenEnv-compliant environment where an AI agent acts as an **incident commander**
 managing firefighting resources to contain a spreading wildfire on
