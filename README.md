@@ -18,7 +18,7 @@ procedurally-generated terrain.
 > *An AI agent learns to command firefighting resources and contain a spreading wildfire on procedurally-generated terrain.*
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-23%20passed-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-32%20passed-brightgreen.svg)](#testing)
 [![OpenEnv API](https://img.shields.io/badge/API-step%20%7C%20reset%20%7C%20state-orange.svg)](#api-reference)
 
 ---
