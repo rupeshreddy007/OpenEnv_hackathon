@@ -249,6 +249,8 @@ class WildfireEnv:
         cells_before = int(np.sum(self.fire_map == BURNED))
         burned_before = self.fire_map == BURNED  # snapshot before spread
         self._spread_fire()
+        if self.config.ember_spotting:
+            self._ember_spotting()
         self._advance_burn_timers()
         self._decay_water_timers()
         cells_after = int(np.sum(self.fire_map == BURNED))
@@ -269,6 +271,10 @@ class WildfireEnv:
 
         # ---------- Wind shift ----------
         self._update_wind()
+
+        # ---------- Fire station resupply ----------
+        if self.config.fire_station_resupply:
+            self._resupply_from_stations()
 
         # ---------- Termination ----------
         self.timestep += 1
@@ -499,6 +505,88 @@ class WildfireEnv:
         self.burn_timer[burning] -= 1
         exhausted = burning & (self.burn_timer <= 0)
         self.fire_map[exhausted] = BURNED
+
+    def _ember_spotting(self):
+        """
+        Simulate long-range ember spotting (spot fires).
+
+        Wind carries burning embers 2–5 cells downwind, potentially igniting
+        new fires ahead of the main front. Probability increases with wind
+        speed and decreases with distance. This is a well-documented wildfire
+        phenomenon responsible for many structure losses (Koo et al., 2010).
+
+        Reference:
+          Koo, E., Pagni, P.J., Weise, D.R. & Woycheese, J.P. (2010).
+          "Firebrands and spotting ignition in large-scale fires."
+          Int. J. Wildland Fire, 19(7), 818-843.
+        """
+        cfg = self.config
+        N = self.N
+        burning_cells = np.argwhere(self.fire_map == BURNING)
+        if len(burning_cells) == 0:
+            return
+
+        spot_ignitions = []
+        for r, c in burning_cells:
+            # Probability of this cell emitting an ember
+            prob = cfg.ember_prob_base + cfg.ember_wind_scale * self.wind_speed
+            if self.rng.random() >= prob:
+                continue
+
+            # Ember travels downwind at random distance
+            dist = self.rng.integers(cfg.ember_min_distance, cfg.ember_max_distance + 1)
+            # Add some lateral scatter (±30°)
+            scatter = self.rng.uniform(-0.5, 0.5)
+            angle = self.wind_dir + scatter
+
+            nr = int(round(r + np.sin(angle) * dist))
+            nc = int(round(c + np.cos(angle) * dist))
+
+            if nr < 0 or nr >= N or nc < 0 or nc >= N:
+                continue
+            if self.fire_map[nr, nc] != UNBURNED:
+                continue
+            if self.water_timer[nr, nc] > 0:
+                continue
+
+            veg = int(self.vegetation[nr, nc])
+            flammability = cfg.vegetation_flammability[veg]
+            if flammability <= 0:
+                continue
+
+            # Ignition probability decreases with distance, increases with flammability
+            ignition_prob = flammability * 0.3 / dist
+            if self.rng.random() < ignition_prob:
+                spot_ignitions.append((nr, nc))
+
+        for r, c in spot_ignitions:
+            if self.fire_map[r, c] == UNBURNED:
+                veg = int(self.vegetation[r, c])
+                self.fire_map[r, c] = BURNING
+                self.burn_timer[r, c] = cfg.vegetation_burn_rate[veg]
+
+    def _resupply_from_stations(self):
+        """
+        Fire stations periodically resupply agent resources.
+
+        Every `resupply_interval` steps, each intact (non-burned) fire station
+        provides additional water drops and firebreaks. This encourages spatial
+        planning around station locations and adds a strategic reason to protect
+        stations from fire.
+        """
+        cfg = self.config
+        if self.timestep == 0 or self.timestep % cfg.resupply_interval != 0:
+            return
+
+        station_cells = np.argwhere(
+            (self.structures == FIRE_STATION) & (self.fire_map != BURNED)
+        )
+        n_stations = len(station_cells)
+        if n_stations == 0:
+            return
+
+        self.water_drops_left += n_stations * cfg.resupply_water
+        self.firebreaks_left += n_stations * cfg.resupply_firebreaks
 
     def _decay_water_timers(self):
         """Tick down water suppression timers."""

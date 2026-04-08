@@ -209,6 +209,27 @@ def api_danger_map():
             # Take max across all burning neighbors
             danger[nr, nc] = max(danger[nr, nc], prob)
 
+    # Ember spotting risk — cells downwind within ember range
+    if cfg.ember_spotting and len(burning_cells) > 0:
+        for r, c in burning_cells:
+            for dist in range(cfg.ember_min_distance, cfg.ember_max_distance + 1):
+                for scatter in [-0.4, 0.0, 0.4]:
+                    angle = env.wind_dir + scatter
+                    nr = int(round(r + np.sin(angle) * dist))
+                    nc = int(round(c + np.cos(angle) * dist))
+                    if nr < 0 or nr >= N or nc < 0 or nc >= N:
+                        continue
+                    if env.fire_map[nr, nc] != UNBURNED:
+                        continue
+                    veg = int(env.vegetation[nr, nc])
+                    flam = cfg.vegetation_flammability[veg]
+                    if flam <= 0:
+                        continue
+                    ember_prob = (cfg.ember_prob_base + cfg.ember_wind_scale * env.wind_speed) \
+                                 * flam * 0.3 / dist
+                    ember_prob = float(np.clip(ember_prob, 0.0, 0.5))
+                    danger[nr, nc] = max(danger[nr, nc], ember_prob)
+
     return jsonify({"danger_map": danger.tolist()})
 
 

@@ -190,6 +190,20 @@ class EnvironmentConfig:
     water_drop_radius: int = 1        # Water affects a radius around target
     water_suppress_duration: int = 3  # Steps a watered cell resists fire
 
+    # --- Ember spotting (long-range ignition from wind-carried embers) ---
+    ember_spotting: bool = True          # Enable ember spotting mechanic
+    ember_max_distance: int = 5          # Max cells an ember can travel
+    ember_min_distance: int = 2          # Min cells (embers skip nearby cells)
+    ember_prob_base: float = 0.03        # Base probability per burning cell per step
+    ember_wind_scale: float = 0.006      # Extra prob per m/s of wind speed
+
+    # --- Fire station resupply ---
+    fire_station_resupply: bool = True    # Enable periodic resupply
+    resupply_interval: int = 10           # Steps between resupply events
+    resupply_water: int = 1               # Water drops regained per station per interval
+    resupply_firebreaks: int = 1          # Firebreaks regained per station per interval
+    resupply_radius: int = 0              # 0 = global resupply, >0 = only near station
+
     # --- Episode ---
     max_steps: int = 80  # Episode length
 

@@ -100,6 +100,7 @@ A wildfire ignites on an N×N terrain grid. Fire spreads based on realistic phys
 | **Slope** | Fire races uphill, slower downhill |
 | **Vegetation** | Grass burns fast, forest burns slow but intense, rock/water block fire |
 | **Moisture** | Wet soil resists ignition |
+| **Ember Spotting** | Burning cells launch embers 2-5 cells downwind, igniting spot fires ahead of the front |
 
 The agent acts as an **incident commander** with limited resources per episode:
 
@@ -108,6 +109,7 @@ The agent acts as an **incident commander** with limited resources per episode:
 | 🪓 **Firebreaks** | 15 | Permanently block fire on an unburned cell |
 | 💧 **Water Drops** | 10 | Suppress fire in a radius, temporarily protect cells |
 | 🚑 **Evacuations** | 3 | Save people in threatened structures before fire arrives |
+| 🚒 **Fire Stations** | 1-2 | Resupply water and firebreaks every 10 steps (if station survives) |
 
 The agent must learn **when** and **where** to deploy each resource to minimize destruction and save lives.
 
