@@ -113,10 +113,11 @@ def _grade(env: WildfireEnv, cumulative_reward: float, task_id: str) -> TaskResu
     burned = int(np.sum(fire_map == BURNED))
     terrain_saved_pct = (total_burnable - burned) / max(total_burnable, 1)
 
-    # Structures saved
+    # Structures saved (evacuated structures count as "saved" for scoring)
+    evacuated = env.evacuated
     struct_cells = (structures == HOUSE) | (structures == HOSPITAL)
     total_structures = int(np.sum(struct_cells))
-    burned_structures = int(np.sum(struct_cells & (fire_map == BURNED)))
+    burned_structures = int(np.sum(struct_cells & (fire_map == BURNED) & (~evacuated)))
     saved_structures = total_structures - burned_structures
     struct_saved_pct = saved_structures / max(total_structures, 1)
 

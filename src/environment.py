@@ -585,8 +585,14 @@ class WildfireEnv:
         if n_stations == 0:
             return
 
-        self.water_drops_left += n_stations * cfg.resupply_water
-        self.firebreaks_left += n_stations * cfg.resupply_firebreaks
+        self.water_drops_left = min(
+            self.water_drops_left + n_stations * cfg.resupply_water,
+            cfg.max_water_drops,
+        )
+        self.firebreaks_left = min(
+            self.firebreaks_left + n_stations * cfg.resupply_firebreaks,
+            cfg.max_firebreaks,
+        )
 
     def _decay_water_timers(self):
         """Tick down water suppression timers."""
@@ -610,7 +616,7 @@ class WildfireEnv:
     def _terminal_reward(self) -> float:
         """Compute end-of-episode bonus/penalty based on final grid state."""
         reward = 0.0
-        saved = np.sum(self.fire_map == UNBURNED) + np.sum(self.fire_map == FIREBREAK)
+        saved = int(np.sum(self.fire_map == UNBURNED))
         reward += saved * self.config.reward_per_saved_cell
 
         saved_houses = int(np.sum(

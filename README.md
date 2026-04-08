@@ -155,6 +155,8 @@ python ui/app.py
 
 Open **http://localhost:5000** — play manually or watch the built-in AI agent play.
 
+> **Docker**: When running via Docker the UI is at **http://localhost:7860**.
+
 ### Run Tests
 
 ```bash
@@ -271,7 +273,7 @@ score = 0.40 × terrain_saved_% + 0.40 × structures_saved_% + 0.20 × containme
 ```
 
 - **terrain_saved_%** — fraction of burnable cells not burned
-- **structures_saved_%** — fraction of houses/hospitals not destroyed
+- **structures_saved_%** — fraction of houses/hospitals not burned (evacuated structures that burn still count as saved)
 - **containment_bonus** — 1.0 if fire is fully extinguished with <50% terrain burned, else 0.0
 
 ### Run Baseline

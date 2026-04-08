@@ -79,18 +79,18 @@ environment:
         type: int
         range: [0, N-1]
 
-  reward_range: [0.0, 1.0]
+  reward_range: [-20.0, 10.0]
   reward_description: >
-    Normalized score 0.0–1.0. Combines terrain saved, structures saved,
-    successful evacuations, and containment bonus. Higher is better.
+    Per-step reward shaped by burn penalties, structure losses, and resource use.
+    Grader normalises final performance to 0.0–1.0.
 
 tasks:
   - id: easy
     name: "Brush Fire"
-    description: "Small 10×10 grid, 1 ignition point, calm wind, few structures. Learn basic containment."
+    description: "12x12 grid, 3 ignition points, moderate wind (8 m/s), 6 houses + 1 hospital. Learn basic containment."
     config_fn: get_easy_task_config
     grader: src.tasks.grade_easy
-    max_steps: 40
+    max_steps: 50
     difficulty: easy
     baseline_score: 0.41
 
@@ -116,6 +116,12 @@ api:
   reset: "env.reset() -> Dict[str, Any]"
   step: "env.step((action_type, row, col)) -> (state, reward, done, info)"
   state: "env.state() -> Dict[str, Any]"
+
+  mechanics:
+    fire_spread: "Rothermel (1972) model with Anderson 13 fuel categories"
+    ember_spotting: "Wind-carried embers can ignite cells 2-5 cells downwind"
+    fire_station_resupply: "Intact fire stations resupply water/firebreaks every 10 steps"
+    wind_dynamics: "Wind direction and speed shift stochastically each step"
 
 deploy:
   platform: huggingface-spaces

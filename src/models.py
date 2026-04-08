@@ -1,7 +1,7 @@
 """
 Typed models for the Wildfire Containment Environment.
 
-Provides Pydantic-validated schemas for observations, actions, and results
+Provides typed dataclass schemas for observations, actions, and results
 so that the OpenEnv spec can enforce type safety.
 """
 
