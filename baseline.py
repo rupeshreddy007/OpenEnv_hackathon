@@ -2,16 +2,20 @@
 Baseline inference script — runs agents against all three tasks and reports scores.
 
 Usage:
-    python baseline.py                    # Run all tasks
-    python baseline.py --task easy        # Run one task
-    python baseline.py --episodes 10      # More episodes for stable averages
-    python baseline.py --agent greedy     # Choose agent: random or greedy (default)
+    python baseline.py                        # Run all tasks with greedy heuristic
+    python baseline.py --agent openai         # Run with OpenAI GPT model
+    python baseline.py --task easy            # Run one task
+    python baseline.py --episodes 10          # More episodes for stable averages
+    python baseline.py --agent greedy         # Choose agent: random, greedy, or openai
+
+Requires OPENAI_API_KEY environment variable for --agent openai.
 
 Output: Reproducible scores for each task (0.0–1.0).
 """
 
 import sys
 import os
+import json
 import argparse
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
@@ -127,6 +131,96 @@ def greedy_agent(state):
 
 
 # -------------------------------------------------------------------------
+# OpenAI API agent
+# -------------------------------------------------------------------------
+
+def _build_openai_prompt(state):
+    """Convert environment state to a text prompt for the LLM."""
+    fire_map = np.asarray(state["fire_map"])
+    structures = np.asarray(state["structures"])
+    evacuated = np.asarray(state["evacuated"])
+    resources = state["resources"]
+    N = fire_map.shape[0]
+
+    burning = list(zip(*np.where(fire_map == BURNING)))
+    burned = int(np.sum(fire_map == BURNED))
+    struct_cells = list(zip(*np.where(structures != NO_STRUCTURE)))
+    at_risk = []
+    for r, c in struct_cells:
+        if fire_map[r, c] != BURNED and not evacuated[r, c]:
+            kind = "HOSPITAL" if structures[r, c] == HOSPITAL else "HOUSE"
+            min_dist = min(
+                (abs(int(r) - int(br)) + abs(int(c) - int(bc)) for br, bc in burning),
+                default=99,
+            )
+            at_risk.append(f"  {kind} at ({r},{c}), nearest fire distance={min_dist}")
+
+    wind_deg = int(np.degrees(state["wind_direction"])) % 360
+
+    prompt = f"""You are an AI incident commander managing a {N}x{N} wildfire grid.
+
+Current state (step {state['timestep']}):
+- Burning cells: {len(burning)}, Burned: {burned}/{state['total_burnable']}
+- Wind: {wind_deg} degrees, {state['wind_speed']:.1f} m/s
+- Resources: {resources['water_drops']} water drops, {resources['firebreaks']} firebreaks, {resources['evacuations']} evacuations
+
+Structures at risk:
+{chr(10).join(at_risk) if at_risk else '  None'}
+
+Actions: 0=noop, 1=firebreak(row,col), 2=waterdrop(row,col), 3=evacuate(row,col)
+Grid coordinates: row and col in [0, {N-1}]
+
+Reply with ONLY a JSON object: {{"action_type": int, "row": int, "col": int}}
+Choose the best action to minimise fire damage and protect structures."""
+    return prompt
+
+
+def make_openai_agent():
+    """Create an agent that calls the OpenAI API for each decision."""
+    try:
+        from openai import OpenAI
+    except ImportError:
+        print("ERROR: openai package not installed. Run: pip install openai")
+        sys.exit(1)
+
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        print("ERROR: OPENAI_API_KEY environment variable not set.")
+        sys.exit(1)
+
+    client = OpenAI(api_key=api_key)
+    model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+
+    def openai_agent(state):
+        prompt = _build_openai_prompt(state)
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": "You are a wildfire containment AI. Respond with only valid JSON."},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.0,
+                max_tokens=50,
+            )
+            text = response.choices[0].message.content.strip()
+            # Parse JSON from response (handle markdown code blocks)
+            if text.startswith("```"):
+                text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+            data = json.loads(text)
+            N = len(state["fire_map"])
+            action_type = int(np.clip(data.get("action_type", 0), 0, 3))
+            row = int(np.clip(data.get("row", 0), 0, N - 1))
+            col = int(np.clip(data.get("col", 0), 0, N - 1))
+            return (action_type, row, col)
+        except Exception as e:
+            print(f"    [OpenAI fallback] {e}")
+            return greedy_agent(state)
+
+    return openai_agent
+
+
+# -------------------------------------------------------------------------
 # Main
 # -------------------------------------------------------------------------
 
@@ -140,13 +234,16 @@ def main():
     parser = argparse.ArgumentParser(description="Wildfire Containment — Baseline Evaluation")
     parser.add_argument("--task", choices=["easy", "medium", "hard", "all"],
                         default="all", help="Which task to run")
-    parser.add_argument("--agent", choices=list(AGENTS.keys()),
+    parser.add_argument("--agent", choices=["random", "greedy", "openai"],
                         default="greedy", help="Agent to evaluate")
     parser.add_argument("--episodes", type=int, default=5,
                         help="Episodes per task for averaging")
     args = parser.parse_args()
 
-    agent_fn = AGENTS[args.agent]
+    if args.agent == "openai":
+        agent_fn = make_openai_agent()
+    else:
+        agent_fn = AGENTS[args.agent]
     task_ids = list(TASKS.keys()) if args.task == "all" else [args.task]
 
     print(f"{'='*60}")

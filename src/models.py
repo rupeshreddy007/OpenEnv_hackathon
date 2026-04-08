@@ -1,28 +1,37 @@
 """
 Typed models for the Wildfire Containment Environment.
 
-Provides typed dataclass schemas for observations, actions, and results
+Provides Pydantic-validated schemas for observations, actions, and results
 so that the OpenEnv spec can enforce type safety.
 """
 
 from __future__ import annotations
-from typing import Dict, List, Tuple, Any
-from dataclasses import dataclass, field
+from typing import Dict, List, Tuple, Any, Optional
+from pydantic import BaseModel, Field, field_validator, model_validator
 import numpy as np
+
+
+# ---------------------------------------------------------------------------
+# Pydantic config for numpy array support
+# ---------------------------------------------------------------------------
+
+class _NumpyConfig(BaseModel):
+    """Base model that allows arbitrary types (numpy arrays)."""
+    model_config = {"arbitrary_types_allowed": True}
 
 
 # ---------------------------------------------------------------------------
 # Action model
 # ---------------------------------------------------------------------------
 
-@dataclass
-class WildfireAction:
+class WildfireAction(BaseModel):
     """A single agent action."""
-    action_type: int   # 0=noop, 1=firebreak, 2=waterdrop, 3=evacuate
-    row: int
-    col: int
+    action_type: int = Field(..., ge=0, le=3, description="0=noop, 1=firebreak, 2=waterdrop, 3=evacuate")
+    row: int = Field(..., ge=0, description="Row coordinate on the grid")
+    col: int = Field(..., ge=0, description="Column coordinate on the grid")
 
-    ACTION_LABELS = {0: "noop", 1: "firebreak", 2: "waterdrop", 3: "evacuate"}
+    ACTION_LABELS: dict = {0: "noop", 1: "firebreak", 2: "waterdrop", 3: "evacuate"}
+    model_config = {"arbitrary_types_allowed": True}
 
     def to_tuple(self) -> Tuple[int, int, int]:
         return (self.action_type, self.row, self.col)
@@ -35,8 +44,8 @@ class WildfireAction:
     def label(self) -> str:
         return self.ACTION_LABELS.get(self.action_type, "unknown")
 
-    def validate(self, grid_size: int) -> bool:
-        """Check action is within valid bounds."""
+    def validate_bounds(self, grid_size: int) -> bool:
+        """Check action is within valid grid bounds."""
         return (
             0 <= self.action_type <= 3
             and 0 <= self.row < grid_size
@@ -48,12 +57,11 @@ class WildfireAction:
 # Resources model
 # ---------------------------------------------------------------------------
 
-@dataclass
-class Resources:
+class Resources(BaseModel):
     """Remaining agent resources."""
-    water_drops: int
-    firebreaks: int
-    evacuations: int
+    water_drops: int = Field(..., ge=0)
+    firebreaks: int = Field(..., ge=0)
+    evacuations: int = Field(..., ge=0)
 
     def to_dict(self) -> Dict[str, int]:
         return {
@@ -75,22 +83,21 @@ class Resources:
 # Observation / State model
 # ---------------------------------------------------------------------------
 
-@dataclass
-class WildfireObservation:
+class WildfireObservation(_NumpyConfig):
     """Full observable state returned by reset() / step() / state()."""
-    fire_map: np.ndarray         # (N,N) int8
-    vegetation: np.ndarray       # (N,N) int8
-    elevation: np.ndarray        # (N,N) float64
-    moisture: np.ndarray         # (N,N) float64
-    structures: np.ndarray       # (N,N) int8
-    evacuated: np.ndarray        # (N,N) bool
-    wind_direction: float        # radians
-    wind_speed: float            # m/s
+    fire_map: np.ndarray = Field(..., description="(N,N) int8 cell fire states")
+    vegetation: np.ndarray = Field(..., description="(N,N) int8 vegetation types")
+    elevation: np.ndarray = Field(..., description="(N,N) float64 elevation in metres")
+    moisture: np.ndarray = Field(..., description="(N,N) float64 soil moisture 0-1")
+    structures: np.ndarray = Field(..., description="(N,N) int8 structure overlay")
+    evacuated: np.ndarray = Field(..., description="(N,N) bool evacuation status")
+    wind_direction: float = Field(..., description="Wind direction in radians")
+    wind_speed: float = Field(..., ge=0, description="Wind speed in m/s")
     resources: Resources
-    timestep: int
-    burning_cells: int
-    burned_cells: int
-    total_burnable: int
+    timestep: int = Field(..., ge=0)
+    burning_cells: int = Field(..., ge=0)
+    burned_cells: int = Field(..., ge=0)
+    total_burnable: int = Field(..., ge=0)
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "WildfireObservation":
@@ -137,8 +144,7 @@ class WildfireObservation:
 # Step result model
 # ---------------------------------------------------------------------------
 
-@dataclass
-class StepResult:
+class StepResult(_NumpyConfig):
     """Typed return value of env.step()."""
     observation: WildfireObservation
     reward: float
@@ -160,18 +166,17 @@ class StepResult:
 # Task result model (for grading)
 # ---------------------------------------------------------------------------
 
-@dataclass
-class TaskResult:
+class TaskResult(BaseModel):
     """Result of running an agent on a single task."""
-    task_id: str                 # "easy", "medium", "hard"
-    score: float                 # Normalized 0.0–1.0
-    raw_reward: float            # Unnormalized cumulative reward
-    burned_cells: int
-    total_burnable: int
-    structures_saved: int
-    structures_total: int
-    steps_taken: int
-    episodes_run: int = 1
+    task_id: str = Field(..., description="easy, medium, or hard")
+    score: float = Field(..., ge=0.0, le=1.0, description="Normalized 0.0-1.0")
+    raw_reward: float = Field(..., description="Unnormalized cumulative reward")
+    burned_cells: int = Field(..., ge=0)
+    total_burnable: int = Field(..., ge=0)
+    structures_saved: int = Field(..., ge=0)
+    structures_total: int = Field(..., ge=0)
+    steps_taken: int = Field(..., ge=0)
+    episodes_run: int = Field(default=1, ge=1)
 
     @property
     def terrain_saved_pct(self) -> float:

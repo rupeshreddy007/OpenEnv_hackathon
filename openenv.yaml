@@ -6,7 +6,7 @@ description: >
   procedurally-generated terrain driven by wind, slope, vegetation, and moisture.
 
 authors:
-  - name: OpenEnv Hackathon Team
+  - name: Rupesh Reddy Bandi 
 
 environment:
   module: src.environment
