@@ -247,6 +247,7 @@ class WildfireEnv:
 
         # ---------- Fire dynamics ----------
         cells_before = int(np.sum(self.fire_map == BURNED))
+        burned_before = self.fire_map == BURNED  # snapshot before spread
         self._spread_fire()
         self._advance_burn_timers()
         self._decay_water_timers()
@@ -255,12 +256,16 @@ class WildfireEnv:
         newly_burned = cells_after - cells_before
         reward += newly_burned * self.config.penalty_per_burned_cell
 
-        # Penalty for burned structures
-        burned_mask = self.fire_map == BURNED
-        reward += int(np.sum(burned_mask & (self.structures == HOUSE) & (~self.evacuated))) \
-            * self.config.penalty_per_burned_house * (1 if newly_burned > 0 else 0)
-        reward += int(np.sum(burned_mask & (self.structures == HOSPITAL) & (~self.evacuated))) \
-            * self.config.penalty_per_burned_hospital * (1 if newly_burned > 0 else 0)
+        # Penalty only for structures that burned THIS step
+        newly_burned_mask = (self.fire_map == BURNED) & (~burned_before)
+        new_houses_burned = int(np.sum(
+            newly_burned_mask & (self.structures == HOUSE) & (~self.evacuated)
+        ))
+        new_hospitals_burned = int(np.sum(
+            newly_burned_mask & (self.structures == HOSPITAL) & (~self.evacuated)
+        ))
+        reward += new_houses_burned * self.config.penalty_per_burned_house
+        reward += new_hospitals_burned * self.config.penalty_per_burned_hospital
 
         # ---------- Wind shift ----------
         self._update_wind()
