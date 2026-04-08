@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🔥 Wildfire Containment</title>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --card: #16213e;
+    --accent: #e94560;
+    --accent2: #0f3460;
+    --text: #eee;
+    --muted: #888;
+    --green: #4ecca3;
+    --orange: #ff9a3c;
+    --blue: #3dc1d3;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    background: var(--card);
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    border-bottom: 2px solid var(--accent);
+  }
+  header h1 { font-size: 1.4em; }
+  header .subtitle { color: var(--muted); font-size: 0.85em; }
+
+  .main {
+    display: flex;
+    flex: 1;
+    gap: 0;
+  }
+
+  /* Left panel — controls */
+  .panel {
+    width: 280px;
+    background: var(--card);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow-y: auto;
+    border-right: 1px solid #333;
+  }
+  .panel h3 { color: var(--accent); font-size: 0.95em; text-transform: uppercase; letter-spacing: 1px; }
+  .panel label { display: block; color: var(--muted); font-size: 0.8em; margin-bottom: 4px; }
+  .panel select, .panel input {
+    width: 100%;
+    padding: 6px 8px;
+    background: var(--bg);
+    border: 1px solid #444;
+    color: var(--text);
+    border-radius: 4px;
+    font-size: 0.9em;
+  }
+  .tool-group { display: flex; flex-direction: column; gap: 6px; }
+  .tool-btn {
+    padding: 10px;
+    border: 2px solid transparent;
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 0.9em;
+    text-align: left;
+    transition: all 0.15s;
+  }
+  .tool-btn:hover { border-color: var(--accent); }
+  .tool-btn.active { border-color: var(--accent); background: rgba(233,69,96,0.15); }
+  .tool-btn .shortcut { float: right; color: var(--muted); font-size: 0.8em; }
+  .tool-btn .count { color: var(--orange); font-weight: bold; }
+
+  .btn {
+    padding: 10px 16px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.9em;
+    transition: all 0.15s;
+  }
+  .btn-red { background: var(--accent); color: #fff; }
+  .btn-red:hover { background: #c73652; }
+  .btn-green { background: var(--green); color: #111; }
+  .btn-green:hover { background: #3baa8a; }
+  .btn-blue { background: var(--blue); color: #111; }
+  .btn-blue:hover { background: #2fa1b0; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-row { display: flex; gap: 8px; }
+  .btn-row .btn { flex: 1; }
+
+  /* Center — grid canvas */
+  .grid-area {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    position: relative;
+  }
+  canvas {
+    border: 2px solid #333;
+    border-radius: 4px;
+    cursor: crosshair;
+    image-rendering: pixelated;
+  }
+  .cell-tooltip {
+    position: absolute;
+    background: rgba(0,0,0,0.85);
+    color: #fff;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 0.8em;
+    pointer-events: none;
+    display: none;
+    z-index: 10;
+  }
+
+  /* Right panel — stats */
+  .stats-panel {
+    width: 260px;
+    background: var(--card);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow-y: auto;
+    border-left: 1px solid #333;
+  }
+  .stat-card {
+    background: var(--bg);
+    border-radius: 6px;
+    padding: 10px;
+  }
+  .stat-card .label { color: var(--muted); font-size: 0.75em; text-transform: uppercase; }
+  .stat-card .value { font-size: 1.4em; font-weight: bold; margin-top: 2px; }
+  .stat-card .value.positive { color: var(--green); }
+  .stat-card .value.negative { color: var(--accent); }
+
+  .legend { font-size: 0.8em; }
+  .legend div { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+  .legend .swatch { width: 14px; height: 14px; border-radius: 2px; border: 1px solid #555; }
+
+  .log-box {
+    flex: 1;
+    background: var(--bg);
+    border-radius: 6px;
+    padding: 8px;
+    font-family: monospace;
+    font-size: 0.75em;
+    overflow-y: auto;
+    max-height: 250px;
+    color: var(--muted);
+  }
+  .log-box .log-entry { margin: 2px 0; }
+  .log-box .log-entry.good { color: var(--green); }
+  .log-box .log-entry.bad { color: var(--accent); }
+  .log-box .log-entry.info { color: var(--blue); }
+
+  /* Auto-play speed */
+  .speed-control { display: flex; align-items: center; gap: 8px; }
+  .speed-control input { flex: 1; }
+  .speed-label { font-size: 0.8em; color: var(--muted); min-width: 50px; }
+
+  /* Game Over overlay */
+  .overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+  }
+  .overlay.show { display: flex; }
+  .overlay-card {
+    background: var(--card);
+    border: 2px solid var(--accent);
+    border-radius: 12px;
+    padding: 32px;
+    text-align: center;
+    max-width: 340px;
+  }
+  .overlay-card h2 { margin-bottom: 12px; }
+  .overlay-card .final-score { font-size: 2em; font-weight: bold; margin: 8px 0 16px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🔥 Wildfire Containment</h1>
+  <span class="subtitle">OpenEnv RL Environment — Interactive Mode</span>
+</header>
+
+<div class="main">
+  <!-- LEFT PANEL -->
+  <div class="panel">
+    <h3>Scenario</h3>
+    <div>
+      <label>Preset</label>
+      <select id="preset">
+        <option value="default" selected>Default (20×20)</option>
+        <option value="small">Small (10×10)</option>
+        <option value="inferno">Inferno (30×30)</option>
+      </select>
+    </div>
+    <div>
+      <label>Seed (optional)</label>
+      <input id="seed" type="number" placeholder="random">
+    </div>
+    <button class="btn btn-red" id="btn-reset" onclick="resetEnv()">🔄 New Scenario</button>
+
+    <h3>Tools</h3>
+    <div class="tool-group">
+      <button class="tool-btn active" data-tool="0" onclick="selectTool(0)">
+        ⏭️ Skip Turn <span class="shortcut">Q</span>
+      </button>
+      <button class="tool-btn" data-tool="1" onclick="selectTool(1)">
+        🪓 Firebreak <span class="count" id="res-fb">—</span> <span class="shortcut">W</span>
+      </button>
+      <button class="tool-btn" data-tool="2" onclick="selectTool(2)">
+        💧 Water Drop <span class="count" id="res-wd">—</span> <span class="shortcut">E</span>
+      </button>
+      <button class="tool-btn" data-tool="3" onclick="selectTool(3)">
+        🚑 Evacuate <span class="count" id="res-ev">—</span> <span class="shortcut">R</span>
+      </button>
+    </div>
+
+    <h3>Playback</h3>
+    <div class="btn-row">
+      <button class="btn btn-green" id="btn-step" onclick="stepNoop()">⏩ Step</button>
+      <button class="btn btn-blue" id="btn-auto" onclick="toggleAuto()">▶ Auto</button>
+    </div>
+    <div class="speed-control">
+      <span class="speed-label">Speed</span>
+      <input type="range" id="speed" min="50" max="1000" value="300" step="50">
+      <span class="speed-label" id="speed-val">300ms</span>
+    </div>
+  </div>
+
+  <!-- CENTER -->
+  <div class="grid-area">
+    <canvas id="grid"></canvas>
+    <div class="cell-tooltip" id="tooltip"></div>
+    <div class="overlay" id="overlay">
+      <div class="overlay-card">
+        <h2>🔥 Simulation Complete</h2>
+        <div>Final Score</div>
+        <div class="final-score" id="final-score">0</div>
+        <div id="final-stats" style="font-size:0.9em;color:var(--muted);margin-bottom:16px;"></div>
+        <button class="btn btn-red" onclick="resetEnv()">Play Again</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="stats-panel">
+    <h3>Status</h3>
+    <div class="stat-card">
+      <div class="label">Step</div>
+      <div class="value" id="stat-step">0 / —</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Reward (cumulative)</div>
+      <div class="value" id="stat-reward">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">🔥 Burning</div>
+      <div class="value negative" id="stat-burning">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">▓ Burned</div>
+      <div class="value" id="stat-burned">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">🌲 Saved</div>
+      <div class="value positive" id="stat-saved">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">🌬️ Wind</div>
+      <div class="value" id="stat-wind">—</div>
+    </div>
+
+    <h3>Legend</h3>
+    <div class="legend">
+      <div><span class="swatch" style="background:#4a7c59;"></span> Grass</div>
+      <div><span class="swatch" style="background:#2d5a1e;"></span> Shrub</div>
+      <div><span class="swatch" style="background:#1a3d0c;"></span> Forest</div>
+      <div><span class="swatch" style="background:#777;"></span> Rock</div>
+      <div><span class="swatch" style="background:#2980b9;"></span> Water</div>
+      <div><span class="swatch" style="background:#e74c3c;"></span> Burning</div>
+      <div><span class="swatch" style="background:#333;"></span> Burned</div>
+      <div><span class="swatch" style="background:#d4ac0d;"></span> Firebreak</div>
+      <div><span class="swatch" style="background:#85c1e9;"></span> Water Dropped</div>
+      <div><span class="swatch" style="background:#fff;border-color:#fff;"></span> House / Hospital</div>
+    </div>
+
+    <h3>Action Log</h3>
+    <div class="log-box" id="log"></div>
+  </div>
+</div>
+
+<script>
+const API = '';
+const canvas = document.getElementById('grid');
+const ctx = canvas.getContext('2d');
+const tooltip = document.getElementById('tooltip');
+const logBox = document.getElementById('log');
+
+let state = null;
+let gridSize = 0;
+let cellSize = 0;
+let selectedTool = 0;
+let autoInterval = null;
+let done = false;
+
+// Colors
+const VEG_COLORS = ['#4a7c59','#2d5a1e','#1a3d0c','#777','#2980b9'];
+const FIRE_COLORS = {0: null, 1: '#e74c3c', 2: '#333', 3: '#d4ac0d', 4: '#85c1e9'};
+const STRUCT_MARKERS = {1: '🏠', 2: '🏥', 3: '🚒'};
+
+// ---- API ----
+async function resetEnv() {
+  stopAuto();
+  done = false;
+  document.getElementById('overlay').classList.remove('show');
+
+  const preset = document.getElementById('preset').value;
+  const seedVal = document.getElementById('seed').value;
+  const body = { preset };
+  if (seedVal) body.seed = parseInt(seedVal);
+
+  const res = await fetch(API + '/api/reset', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  gridSize = data.grid_size;
+  state = data.state;
+  logBox.innerHTML = '';
+  addLog('info', `New scenario: ${preset} (${gridSize}×${gridSize})`);
+  computeCellSize();
+  updateUI(data);
+}
+
+async function doStep(actionType, row, col) {
+  if (done) return;
+  const res = await fetch(API + '/api/step', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ action: actionType, row, col }),
+  });
+  const data = await res.json();
+  state = data.state;
+  updateUI(data);
+
+  if (data.info && data.info.action_effect) {
+    const cls = data.info.action_valid === false ? 'bad' : 'good';
+    addLog(cls, `Step ${state.timestep}: ${data.info.action_effect} (${row},${col}) r=${data.reward}`);
+  }
+
+  if (data.done) {
+    done = true;
+    stopAuto();
+    document.getElementById('final-score').textContent = data.cumulative_reward;
+    const burned = state.burned_cells;
+    const total = state.total_burnable;
+    const pct = total > 0 ? ((total - burned) / total * 100).toFixed(1) : 0;
+    document.getElementById('final-stats').textContent =
+      `${pct}% terrain saved · ${burned} cells burned of ${total}`;
+    document.getElementById('overlay').classList.add('show');
+  }
+}
+
+function stepNoop() { doStep(0, 0, 0); }
+
+// ---- Tools ----
+function selectTool(t) {
+  selectedTool = t;
+  document.querySelectorAll('.tool-btn').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.tool) === t);
+  });
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if (e.key === 'q' || e.key === 'Q') selectTool(0);
+  if (e.key === 'w' || e.key === 'W') selectTool(1);
+  if (e.key === 'e' || e.key === 'E') selectTool(2);
+  if (e.key === 'r' || e.key === 'R') selectTool(3);
+  if (e.key === ' ') { e.preventDefault(); stepNoop(); }
+});
+
+// ---- Auto-play ----
+function toggleAuto() {
+  if (autoInterval) {
+    stopAuto();
+  } else {
+    const ms = parseInt(document.getElementById('speed').value);
+    document.getElementById('btn-auto').textContent = '⏸ Pause';
+    autoInterval = setInterval(() => stepNoop(), ms);
+  }
+}
+function stopAuto() {
+  if (autoInterval) { clearInterval(autoInterval); autoInterval = null; }
+  document.getElementById('btn-auto').textContent = '▶ Auto';
+}
+document.getElementById('speed').addEventListener('input', e => {
+  document.getElementById('speed-val').textContent = e.target.value + 'ms';
+  if (autoInterval) { stopAuto(); toggleAuto(); }
+});
+
+// ---- Canvas ----
+function computeCellSize() {
+  const area = document.querySelector('.grid-area');
+  const maxPx = Math.min(area.clientWidth - 40, area.clientHeight - 40);
+  cellSize = Math.max(Math.floor(maxPx / gridSize), 8);
+  canvas.width = gridSize * cellSize;
+  canvas.height = gridSize * cellSize;
+}
+window.addEventListener('resize', () => { if (gridSize) { computeCellSize(); draw(); } });
+
+function draw() {
+  if (!state) return;
+  const N = gridSize;
+  const cs = cellSize;
+
+  for (let r = 0; r < N; r++) {
+    for (let c = 0; c < N; c++) {
+      const veg = state.vegetation[r][c];
+      const fire = state.fire_map[r][c];
+      const struct = state.structures[r][c];
+      const evac = state.evacuated[r][c];
+
+      // Base: vegetation
+      let color = VEG_COLORS[veg] || '#555';
+
+      // Fire overlay
+      if (FIRE_COLORS[fire]) color = FIRE_COLORS[fire];
+
+      ctx.fillStyle = color;
+      ctx.fillRect(c * cs, r * cs, cs, cs);
+
+      // Fire animation glow
+      if (fire === 1) {
+        const flicker = 0.6 + Math.random() * 0.4;
+        ctx.fillStyle = `rgba(255, ${Math.floor(80 * flicker)}, 0, ${0.3 + flicker * 0.3})`;
+        ctx.fillRect(c * cs, r * cs, cs, cs);
+      }
+
+      // Structure marker
+      if (struct > 0 && fire !== 2) {
+        const marker = STRUCT_MARKERS[struct];
+        if (marker && cs >= 14) {
+          ctx.font = `${Math.floor(cs * 0.6)}px serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(marker, c * cs + cs / 2, r * cs + cs / 2);
+        } else if (cs >= 8) {
+          ctx.fillStyle = evac ? '#2ecc71' : '#fff';
+          const pad = Math.max(1, cs * 0.2);
+          ctx.fillRect(c * cs + pad, r * cs + pad, cs - 2 * pad, cs - 2 * pad);
+        }
+      }
+
+      // Evacuated indicator
+      if (evac && struct > 0 && fire !== 2 && cs >= 14) {
+        ctx.fillStyle = 'rgba(46, 204, 113, 0.4)';
+        ctx.fillRect(c * cs, r * cs, cs, cs);
+      }
+
+      // Grid lines
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+      ctx.strokeRect(c * cs, r * cs, cs, cs);
+    }
+  }
+
+  // Wind arrow at top-right
+  drawWindArrow();
+}
+
+function drawWindArrow() {
+  if (!state) return;
+  const cx = canvas.width - 30;
+  const cy = 30;
+  const len = 18;
+  const dir = state.wind_direction;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(dir);
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-len, 0);
+  ctx.lineTo(len, 0);
+  ctx.lineTo(len - 6, -5);
+  ctx.moveTo(len, 0);
+  ctx.lineTo(len - 6, 5);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(cx - 24, cy - 24, 48, 48);
+  // Redraw arrow on top
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(dir);
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-len, 0);
+  ctx.lineTo(len, 0);
+  ctx.lineTo(len - 6, -5);
+  ctx.moveTo(len, 0);
+  ctx.lineTo(len - 6, 5);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ---- Canvas click ----
+canvas.addEventListener('click', e => {
+  if (!state || done) return;
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  const col = Math.floor(x / cellSize);
+  const row = Math.floor(y / cellSize);
+  if (row < 0 || row >= gridSize || col < 0 || col >= gridSize) return;
+
+  if (selectedTool === 0) {
+    doStep(0, 0, 0);
+  } else {
+    doStep(selectedTool, row, col);
+  }
+});
+
+// ---- Tooltip ----
+const VEG_NAMES = ['Grass','Shrub','Forest','Rock','Water'];
+const FIRE_NAMES = ['Unburned','Burning','Burned','Firebreak','Water Dropped'];
+const STRUCT_NAMES = ['—','House','Hospital','Fire Station'];
+
+canvas.addEventListener('mousemove', e => {
+  if (!state) { tooltip.style.display = 'none'; return; }
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  const col = Math.floor(x / cellSize);
+  const row = Math.floor(y / cellSize);
+  if (row < 0 || row >= gridSize || col < 0 || col >= gridSize) {
+    tooltip.style.display = 'none';
+    return;
+  }
+
+  const veg = VEG_NAMES[state.vegetation[row][col]] || '?';
+  const fire = FIRE_NAMES[state.fire_map[row][col]] || '?';
+  const struct = STRUCT_NAMES[state.structures[row][col]] || '—';
+  const elev = state.elevation[row][col].toFixed(1);
+  const moist = (state.moisture[row][col] * 100).toFixed(0);
+  const evac = state.evacuated[row][col] ? ' ✅ Evacuated' : '';
+
+  tooltip.innerHTML = `(${row},${col}) ${veg} · ${fire}<br>Elev: ${elev}m · Moisture: ${moist}%<br>Structure: ${struct}${evac}`;
+  tooltip.style.display = 'block';
+  tooltip.style.left = (e.clientX - canvas.parentElement.getBoundingClientRect().left + 12) + 'px';
+  tooltip.style.top = (e.clientY - canvas.parentElement.getBoundingClientRect().top - 10) + 'px';
+});
+canvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+
+// ---- Update UI ----
+function updateUI(data) {
+  state = data.state || state;
+  draw();
+
+  const s = state;
+  const maxSteps = done ? s.timestep : '—';
+  document.getElementById('stat-step').textContent = `${s.timestep}`;
+  const cr = data.cumulative_reward ?? 0;
+  const rEl = document.getElementById('stat-reward');
+  rEl.textContent = cr;
+  rEl.className = 'value ' + (cr >= 0 ? 'positive' : 'negative');
+
+  document.getElementById('stat-burning').textContent = s.burning_cells;
+  document.getElementById('stat-burned').textContent = s.burned_cells;
+  const saved = s.total_burnable - s.burned_cells - s.burning_cells;
+  document.getElementById('stat-saved').textContent = saved;
+
+  const windDeg = (s.wind_direction * 180 / Math.PI).toFixed(0);
+  document.getElementById('stat-wind').textContent = `${windDeg}° @ ${s.wind_speed.toFixed(1)} m/s`;
+
+  // Resources
+  document.getElementById('res-fb').textContent = s.resources.firebreaks;
+  document.getElementById('res-wd').textContent = s.resources.water_drops;
+  document.getElementById('res-ev').textContent = s.resources.evacuations;
+}
+
+function addLog(cls, msg) {
+  const div = document.createElement('div');
+  div.className = 'log-entry ' + cls;
+  div.textContent = msg;
+  logBox.prepend(div);
+  if (logBox.children.length > 100) logBox.removeChild(logBox.lastChild);
+}
+
+// ---- Init ----
+resetEnv();
+</script>
+</body>
+</html>
