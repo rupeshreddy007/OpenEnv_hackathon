@@ -41,9 +41,9 @@ from tasks import TASKS, run_task
 # Environment variables (mandatory)
 # ---------------------------------------------------------------------------
 
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
-API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
-MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
+API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+HF_TOKEN = os.getenv("HF_TOKEN")
 BENCHMARK = "wildfire-containment"
 TEMPERATURE = 0.0
 MAX_TOKENS = 80
@@ -330,11 +330,11 @@ def main():
     )
     args = parser.parse_args()
 
-    if not API_KEY:
-        print("ERROR: HF_TOKEN (or API_KEY) environment variable not set.", flush=True)
+    if not HF_TOKEN:
+        print("ERROR: HF_TOKEN environment variable not set.", flush=True)
         sys.exit(1)
 
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
     task_ids = list(TASKS.keys()) if args.task == "all" else [args.task]
 
     scores = {}
