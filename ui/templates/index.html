@@ -242,6 +242,7 @@
       <button class="btn btn-green" id="btn-step" onclick="stepNoop()">⏩ Step</button>
       <button class="btn btn-blue" id="btn-auto" onclick="toggleAuto()">▶ Auto</button>
     </div>
+    <button class="btn btn-agent" id="btn-agent" onclick="toggleAgent()" style="width:100%;margin-top:6px;background:#9b59b6;color:#fff;padding:10px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:0.9em;">🤖 Run AI Agent</button>
     <div class="speed-control">
       <span class="speed-label">Speed</span>
       <input type="range" id="speed" min="50" max="1000" value="300" step="50">
@@ -404,7 +405,10 @@ document.addEventListener('keydown', e => {
 });
 
 // ---- Auto-play ----
+let agentInterval = null;
+
 function toggleAuto() {
+  stopAgent();
   if (autoInterval) {
     stopAuto();
   } else {
@@ -417,9 +421,56 @@ function stopAuto() {
   if (autoInterval) { clearInterval(autoInterval); autoInterval = null; }
   document.getElementById('btn-auto').textContent = '▶ Auto';
 }
+
+function toggleAgent() {
+  stopAuto();
+  if (agentInterval) {
+    stopAgent();
+  } else {
+    const ms = parseInt(document.getElementById('speed').value);
+    document.getElementById('btn-agent').textContent = '⏸ Stop AI';
+    document.getElementById('btn-agent').style.background = '#c0392b';
+    agentInterval = setInterval(() => agentStep(), ms);
+  }
+}
+function stopAgent() {
+  if (agentInterval) { clearInterval(agentInterval); agentInterval = null; }
+  document.getElementById('btn-agent').textContent = '🤖 Run AI Agent';
+  document.getElementById('btn-agent').style.background = '#9b59b6';
+}
+
+async function agentStep() {
+  if (done) { stopAgent(); return; }
+  const res = await fetch(API + '/api/agent_step', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({}),
+  });
+  const data = await res.json();
+  state = data.state;
+  updateUI(data);
+
+  const act = data.agent_action;
+  const names = ['noop','firebreak','water-drop','evacuate'];
+  const reason = data.info?.agent_reason || '';
+  addLog('info', `🤖 Step ${state.timestep}: ${names[act.type]} (${act.row},${act.col}) — ${reason} [r=${data.reward}]`);
+
+  if (data.done) {
+    done = true;
+    stopAgent();
+    document.getElementById('final-score').textContent = data.cumulative_reward;
+    const burned = state.burned_cells;
+    const total = state.total_burnable;
+    const pct = total > 0 ? ((total - burned) / total * 100).toFixed(1) : 0;
+    document.getElementById('final-stats').textContent =
+      `${pct}% terrain saved · ${burned} cells burned of ${total}`;
+    document.getElementById('overlay').classList.add('show');
+  }
+}
 document.getElementById('speed').addEventListener('input', e => {
   document.getElementById('speed-val').textContent = e.target.value + 'ms';
   if (autoInterval) { stopAuto(); toggleAuto(); }
+  if (agentInterval) { stopAgent(); toggleAgent(); }
 });
 
 // ---- Canvas ----
