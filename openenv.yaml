@@ -1,0 +1,122 @@
+name: wildfire-containment
+version: "1.0.0"
+description: >
+  An AI agent acts as an incident commander managing firefighting resources
+  (firebreaks, water drops, evacuations) to contain a spreading wildfire on
+  procedurally-generated terrain driven by wind, slope, vegetation, and moisture.
+
+authors:
+  - name: OpenEnv Hackathon Team
+
+environment:
+  module: src.environment
+  class: WildfireEnv
+
+  observation_space:
+    fire_map:
+      type: ndarray
+      shape: [N, N]
+      dtype: int8
+      description: "Cell fire state: 0=unburned, 1=burning, 2=burned, 3=firebreak, 4=water_dropped"
+    vegetation:
+      type: ndarray
+      shape: [N, N]
+      dtype: int8
+      description: "Vegetation type: 0=grass, 1=shrub, 2=forest, 3=rock, 4=water_body"
+    elevation:
+      type: ndarray
+      shape: [N, N]
+      dtype: float64
+      description: "Terrain elevation in metres (smoothed noise)"
+    moisture:
+      type: ndarray
+      shape: [N, N]
+      dtype: float64
+      description: "Soil moisture fraction 0.0–1.0"
+    structures:
+      type: ndarray
+      shape: [N, N]
+      dtype: int8
+      description: "Structure overlay: 0=none, 1=house, 2=hospital, 3=fire_station"
+    evacuated:
+      type: ndarray
+      shape: [N, N]
+      dtype: bool
+      description: "Whether each structure cell has been evacuated"
+    wind_direction:
+      type: float
+      description: "Wind direction in radians"
+    wind_speed:
+      type: float
+      description: "Wind speed in m/s"
+    resources:
+      type: dict
+      description: "Remaining counts: water_drops, firebreaks, evacuations"
+    timestep:
+      type: int
+      description: "Current step in the episode"
+    burning_cells:
+      type: int
+      description: "Number of currently burning cells"
+    burned_cells:
+      type: int
+      description: "Number of fully burned cells"
+    total_burnable:
+      type: int
+      description: "Total burnable cells (excludes rock and water)"
+
+  action_space:
+    type: tuple
+    components:
+      action_type:
+        type: int
+        values: [0, 1, 2, 3]
+        labels: [noop, firebreak, waterdrop, evacuate]
+      row:
+        type: int
+        range: [0, N-1]
+      col:
+        type: int
+        range: [0, N-1]
+
+  reward_range: [0.0, 1.0]
+  reward_description: >
+    Normalized score 0.0–1.0. Combines terrain saved, structures saved,
+    successful evacuations, and containment bonus. Higher is better.
+
+tasks:
+  - id: easy
+    name: "Brush Fire"
+    description: "Small 10×10 grid, 1 ignition point, calm wind, few structures. Learn basic containment."
+    config_fn: get_easy_task_config
+    grader: src.tasks.grade_easy
+    max_steps: 40
+    difficulty: easy
+    baseline_score: 0.41
+
+  - id: medium
+    name: "Suburban Wildfire"
+    description: "20x20 grid, 3 ignition points, moderate wind, 10 houses + 2 hospitals to protect."
+    config_fn: get_medium_task_config
+    grader: src.tasks.grade_medium
+    max_steps: 80
+    difficulty: medium
+    baseline_score: 0.37
+
+  - id: hard
+    name: "Inferno"
+    description: "30x30 grid, 5 ignition points, strong shifting wind, 15 houses + 2 hospitals. Full chaos."
+    config_fn: get_hard_task_config
+    grader: src.tasks.grade_hard
+    max_steps: 120
+    difficulty: hard
+    baseline_score: 0.18
+
+api:
+  reset: "env.reset() -> Dict[str, Any]"
+  step: "env.step((action_type, row, col)) -> (state, reward, done, info)"
+  state: "env.state() -> Dict[str, Any]"
+
+deploy:
+  platform: huggingface-spaces
+  dockerfile: Dockerfile

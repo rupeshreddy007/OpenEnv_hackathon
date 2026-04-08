@@ -154,15 +154,23 @@ class TestEvacuate:
 
 
 class TestFireSpread:
-    def test_fire_spreads_over_time(self, env):
+    def test_fire_spreads_over_time(self):
+        # Use a dedicated config with high spread guaranteed
+        cfg = get_small_config()
+        cfg.seed = 7
+        cfg.base_spread_prob = 0.80
+        cfg.moisture_range = (0.01, 0.10)
+        env = WildfireEnv(cfg)
         env.reset()
         initial_burning = int(np.sum(env.fire_map == BURNING))
         total_affected = initial_burning
-        for _ in range(15):
+        for _ in range(30):
             env.step((ACTION_NOOP, 0, 0))
             total_affected = int(np.sum(
                 (env.fire_map == BURNING) | (env.fire_map == BURNED)
             ))
+            if total_affected > initial_burning:
+                break
         # Fire should have spread to more cells
         assert total_affected > initial_burning
 

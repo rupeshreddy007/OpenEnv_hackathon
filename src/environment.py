@@ -2,8 +2,15 @@
 Wildfire Containment Environment — OpenEnv standard API.
 
 An AI agent acts as an incident commander managing limited firefighting
-resources on a terrain grid where fire spreads realistically based on
-wind, slope, vegetation, and moisture.
+resources on a terrain grid where fire spreads using a simplified Rothermel
+model (Rothermel, 1972) with Anderson 13 fuel categories (Anderson, 1982).
+
+Fire spread probability is computed as:
+    P = P_base × flammability × (1 + φ_w + φ_s) × (1 - M/M_x)
+where:
+    φ_w = wind factor (Rothermel): C × (U/U_ref)^B × cos(θ_wind)
+    φ_s = slope factor (Rothermel): k × tan²(slope_angle)
+    M   = soil moisture, M_x = moisture of extinction
 
 API:
   - reset() -> state dict : Generate new terrain, ignite fires, return initial state
@@ -12,11 +19,12 @@ API:
 """
 
 import numpy as np
+import os
 from typing import Tuple, Dict, Any, Optional
 from dataclasses import dataclass
 
 from config import (
-    EnvironmentConfig,
+    EnvironmentConfig, FUEL_PROPERTIES,
     UNBURNED, BURNING, BURNED, FIREBREAK, WATER_DROPPED,
     GRASS, SHRUB, FOREST, ROCK, WATER_BODY,
     NO_STRUCTURE, HOUSE, HOSPITAL, FIRE_STATION,
@@ -87,19 +95,10 @@ class WildfireEnv:
         N = self.N
 
         # --- Terrain ---
-        self.vegetation = self.rng.choice(
-            len(self.config.vegetation_probs),
-            size=(N, N),
-            p=self.config.vegetation_probs,
-        ).astype(np.int8)
-
-        # Perlin-ish elevation via smoothed noise
-        raw = self.rng.random((N, N))
-        from scipy.ndimage import gaussian_filter
-        self.elevation = gaussian_filter(raw, sigma=3) * self.config.elevation_scale
-
-        lo, hi = self.config.moisture_range
-        self.moisture = self.rng.uniform(lo, hi, size=(N, N))
+        if self.config.real_terrain_path and os.path.isdir(self.config.real_terrain_path):
+            self._load_real_terrain()
+        else:
+            self._generate_terrain()
 
         # --- Structures ---
         self.structures = np.full((N, N), NO_STRUCTURE, dtype=np.int8)
@@ -285,6 +284,86 @@ class WildfireEnv:
     # Internal simulation
     # ------------------------------------------------------------------
 
+    def _generate_terrain(self):
+        """Procedurally generate terrain (vegetation, elevation, moisture)."""
+        N = self.N
+        self.vegetation = self.rng.choice(
+            len(self.config.vegetation_probs),
+            size=(N, N),
+            p=self.config.vegetation_probs,
+        ).astype(np.int8)
+
+        # Perlin-ish elevation via smoothed noise
+        raw = self.rng.random((N, N))
+        from scipy.ndimage import gaussian_filter
+        self.elevation = gaussian_filter(raw, sigma=3) * self.config.elevation_scale
+
+        lo, hi = self.config.moisture_range
+        self.moisture = self.rng.uniform(lo, hi, size=(N, N))
+
+    def _load_real_terrain(self):
+        """
+        Load real-world terrain data from numpy files.
+
+        Expected files in real_terrain_path directory:
+          - elevation.npy : (H, W) float array — elevation in metres
+          - vegetation.npy : (H, W) int8 array — fuel type indices (0-4)
+          - moisture.npy (optional) : (H, W) float array — soil moisture 0-1
+
+        Data is center-cropped or resized to match grid_size.
+        """
+        import os
+        path = self.config.real_terrain_path
+        N = self.N
+
+        elev_file = os.path.join(path, "elevation.npy")
+        veg_file = os.path.join(path, "vegetation.npy")
+        moist_file = os.path.join(path, "moisture.npy")
+
+        if os.path.exists(elev_file):
+            raw_elev = np.load(elev_file)
+            self.elevation = self._crop_or_resize(raw_elev, N).astype(np.float64)
+        else:
+            raw = self.rng.random((N, N))
+            from scipy.ndimage import gaussian_filter
+            self.elevation = gaussian_filter(raw, sigma=3) * self.config.elevation_scale
+
+        if os.path.exists(veg_file):
+            raw_veg = np.load(veg_file)
+            self.vegetation = self._crop_or_resize(raw_veg, N).astype(np.int8)
+            # Clamp to valid range
+            self.vegetation = np.clip(self.vegetation, 0, 4)
+        else:
+            self.vegetation = self.rng.choice(
+                len(self.config.vegetation_probs),
+                size=(N, N),
+                p=self.config.vegetation_probs,
+            ).astype(np.int8)
+
+        if os.path.exists(moist_file):
+            raw_moist = np.load(moist_file)
+            self.moisture = self._crop_or_resize(raw_moist, N).astype(np.float64)
+            self.moisture = np.clip(self.moisture, 0.0, 1.0)
+        else:
+            lo, hi = self.config.moisture_range
+            self.moisture = self.rng.uniform(lo, hi, size=(N, N))
+
+    @staticmethod
+    def _crop_or_resize(arr: np.ndarray, N: int) -> np.ndarray:
+        """Center-crop or resize a 2D array to (N, N)."""
+        h, w = arr.shape[:2]
+        if h >= N and w >= N:
+            # Center-crop
+            r0 = (h - N) // 2
+            c0 = (w - N) // 2
+            return arr[r0:r0+N, c0:c0+N]
+        else:
+            # Simple nearest-neighbor resize
+            from scipy.ndimage import zoom
+            zoom_r = N / h
+            zoom_c = N / w
+            return zoom(arr, (zoom_r, zoom_c), order=0)
+
     def _place_structures(self, struct_type: int, count: int):
         """Place structures on random non-water, non-rock cells."""
         candidates = np.argwhere(
@@ -300,9 +379,31 @@ class WildfireEnv:
             self.structures[r, c] = struct_type
 
     def _spread_fire(self):
-        """Spread fire to neighbouring cells."""
+        """
+        Spread fire to neighbouring cells using a simplified Rothermel model.
+
+        The Rothermel (1972) rate-of-spread equation is:
+            R = R0 × (1 + φ_w + φ_s) × moisture_damping
+        We convert R to a per-timestep ignition probability per neighbor cell.
+
+        Wind factor (φ_w):
+            φ_w = C × (U/U_ref)^B × max(0, cos(θ))
+            where θ is the angle between wind direction and spread direction.
+            (Rothermel eq. 47-52, simplified)
+
+        Slope factor (φ_s):
+            φ_s = k × tan²(slope_angle)
+            Fire accelerates uphill; slope_angle from elevation difference.
+            (Rothermel eq. 39, where k ≈ 5.275 × β^-0.3)
+
+        Moisture damping:
+            damping = max(0, 1 - M/M_x)
+            where M = soil moisture, M_x = moisture of extinction for the fuel.
+            (Rothermel eq. 29)
+        """
         N = self.N
         new_ignitions = []
+        cfg = self.config
 
         burning_cells = np.argwhere(self.fire_map == BURNING)
         for r, c in burning_cells:
@@ -321,27 +422,60 @@ class WildfireEnv:
                     continue
 
                 veg = int(self.vegetation[nr, nc])
-                flammability = self.config.vegetation_flammability[veg]
+                flammability = cfg.vegetation_flammability[veg]
                 if flammability <= 0:
                     continue
 
-                # Base spread probability
-                prob = self.config.base_spread_prob * flammability
+                fuel = FUEL_PROPERTIES[veg]
 
-                # Wind bonus: fire spreads more in downwind direction
-                angle_to_neighbor = np.arctan2(dr, dc)
-                wind_alignment = np.cos(angle_to_neighbor - self.wind_dir)
-                if wind_alignment > 0:
-                    wind_factor = wind_alignment * (self.wind_speed / 10.0)
-                    prob += self.config.wind_spread_bonus * wind_factor
+                if cfg.use_rothermel:
+                    # --- Rothermel-inspired spread probability ---
 
-                # Uphill bonus
-                elev_diff = self.elevation[nr, nc] - self.elevation[r, c]
-                if elev_diff > 0:
-                    prob += self.config.uphill_spread_bonus * min(elev_diff / 30.0, 1.0)
+                    # Base probability scaled by flammability
+                    prob = cfg.base_spread_prob * flammability
 
-                # Moisture penalty
-                prob -= self.config.moisture_spread_penalty * self.moisture[nr, nc]
+                    # Wind factor φ_w (Rothermel eq. 47-52, simplified)
+                    angle_to_neighbor = np.arctan2(dr, dc)
+                    wind_alignment = np.cos(angle_to_neighbor - self.wind_dir)
+                    if wind_alignment > 0:
+                        phi_w = (cfg.rothermel_wind_C
+                                 * (self.wind_speed / cfg.rothermel_wind_ref)
+                                 ** cfg.rothermel_wind_B
+                                 * wind_alignment)
+                        prob *= (1.0 + phi_w)
+
+                    # Slope factor φ_s (Rothermel eq. 39)
+                    elev_diff = self.elevation[nr, nc] - self.elevation[r, c]
+                    dist_m = cfg.cell_size_m * (1.414 if abs(dr) + abs(dc) == 2 else 1.0)
+                    slope_angle = np.arctan2(max(elev_diff, 0), dist_m)
+                    tan_slope = np.tan(slope_angle)
+                    phi_s = cfg.rothermel_slope_factor * tan_slope ** 2
+                    prob *= (1.0 + phi_s)
+
+                    # Moisture damping (Rothermel eq. 29)
+                    M = self.moisture[nr, nc]
+                    M_x = fuel["moisture_extinction"]
+                    if M_x > 0:
+                        moisture_damping = max(0.0, 1.0 - M / M_x)
+                    else:
+                        moisture_damping = 0.0
+                    prob *= moisture_damping
+
+                else:
+                    # --- Legacy simplified spread model ---
+                    prob = cfg.base_spread_prob * flammability
+
+                    angle_to_neighbor = np.arctan2(dr, dc)
+                    wind_alignment = np.cos(angle_to_neighbor - self.wind_dir)
+                    if wind_alignment > 0:
+                        wind_factor = wind_alignment * (self.wind_speed / 10.0)
+                        prob += cfg.wind_spread_bonus * wind_factor
+
+                    elev_diff = self.elevation[nr, nc] - self.elevation[r, c]
+                    if elev_diff > 0:
+                        prob += cfg.uphill_spread_bonus * min(elev_diff / 30.0, 1.0)
+
+                    prob -= cfg.moisture_spread_penalty * self.moisture[nr, nc]
 
                 prob = np.clip(prob, 0.0, 0.95)
 
@@ -352,7 +486,7 @@ class WildfireEnv:
             if self.fire_map[r, c] in (UNBURNED, WATER_DROPPED):
                 veg = int(self.vegetation[r, c])
                 self.fire_map[r, c] = BURNING
-                self.burn_timer[r, c] = self.config.vegetation_burn_rate[veg]
+                self.burn_timer[r, c] = cfg.vegetation_burn_rate[veg]
 
     def _advance_burn_timers(self):
         """Tick down burn timers; cells that finish burning become BURNED."""

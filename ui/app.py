@@ -138,6 +138,80 @@ def api_agent_step():
     })
 
 
+@app.route("/api/danger_map", methods=["GET"])
+def api_danger_map():
+    """
+    Compute per-cell fire ignition risk using the Rothermel spread model.
+
+    Returns an NxN array of values in [0, 1] where 1 = highest danger.
+    Only unburned cells adjacent to fire have nonzero risk.
+    """
+    if env is None:
+        return jsonify({"error": "Call /api/reset first"}), 400
+
+    from config import FUEL_PROPERTIES
+
+    N = env.N
+    cfg = env.config
+    danger = np.zeros((N, N), dtype=np.float64)
+
+    burning_cells = np.argwhere(env.fire_map == BURNING)
+    if len(burning_cells) == 0:
+        return jsonify({"danger_map": danger.tolist()})
+
+    for r, c in burning_cells:
+        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1),
+                       (-1, -1), (-1, 1), (1, -1), (1, 1)]:
+            nr, nc = r + dr, c + dc
+            if nr < 0 or nr >= N or nc < 0 or nc >= N:
+                continue
+
+            target_state = env.fire_map[nr, nc]
+            if target_state in (BURNING, BURNED, FIREBREAK):
+                continue
+            if env.water_timer[nr, nc] > 0:
+                continue
+
+            veg = int(env.vegetation[nr, nc])
+            flammability = cfg.vegetation_flammability[veg]
+            if flammability <= 0:
+                continue
+
+            fuel = FUEL_PROPERTIES[veg]
+            prob = cfg.base_spread_prob * flammability
+
+            if cfg.use_rothermel:
+                angle_to_neighbor = np.arctan2(dr, dc)
+                wind_alignment = np.cos(angle_to_neighbor - env.wind_dir)
+                if wind_alignment > 0:
+                    phi_w = (cfg.rothermel_wind_C
+                             * (env.wind_speed / cfg.rothermel_wind_ref)
+                             ** cfg.rothermel_wind_B
+                             * wind_alignment)
+                    prob *= (1.0 + phi_w)
+
+                elev_diff = env.elevation[nr, nc] - env.elevation[r, c]
+                dist_m = cfg.cell_size_m * (1.414 if abs(dr) + abs(dc) == 2 else 1.0)
+                slope_angle = np.arctan2(max(elev_diff, 0), dist_m)
+                tan_slope = np.tan(slope_angle)
+                phi_s = cfg.rothermel_slope_factor * tan_slope ** 2
+                prob *= (1.0 + phi_s)
+
+                M = env.moisture[nr, nc]
+                M_x = fuel["moisture_extinction"]
+                if M_x > 0:
+                    moisture_damping = max(0.0, 1.0 - M / M_x)
+                else:
+                    moisture_damping = 0.0
+                prob *= moisture_damping
+
+            prob = float(np.clip(prob, 0.0, 1.0))
+            # Take max across all burning neighbors
+            danger[nr, nc] = max(danger[nr, nc], prob)
+
+    return jsonify({"danger_map": danger.tolist()})
+
+
 def _agent_decide():
     """
     Heuristic AI agent strategy:
@@ -234,4 +308,9 @@ def _agent_decide():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=5000)
+    args = parser.parse_args()
+    app.run(debug=True, host=args.host, port=args.port)

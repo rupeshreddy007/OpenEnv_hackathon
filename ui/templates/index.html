@@ -195,12 +195,77 @@
   }
   .overlay-card h2 { margin-bottom: 12px; }
   .overlay-card .final-score { font-size: 2em; font-weight: bold; margin: 8px 0 16px; }
+
+  /* Tutorial overlay */
+  .tutorial-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+  .tutorial-overlay.hidden { display: none; }
+  .tutorial-card {
+    background: var(--card);
+    border: 2px solid var(--accent);
+    border-radius: 16px;
+    padding: 36px 40px;
+    max-width: 520px;
+    width: 90%;
+    color: var(--text);
+  }
+  .tutorial-card h2 { margin-bottom: 16px; font-size: 1.5em; }
+  .tutorial-card p { color: var(--muted); font-size: 0.9em; line-height: 1.6; margin-bottom: 10px; }
+  .tutorial-card .tut-grid { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 14px 0; font-size: 0.9em; }
+  .tutorial-card .tut-grid .icon { font-size: 1.3em; text-align: center; }
+  .tutorial-card .tut-grid .desc { color: var(--muted); }
+  .tutorial-card .tut-section { margin-top: 16px; }
+  .tutorial-card .tut-section h4 { color: var(--accent); font-size: 0.85em; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .tutorial-card .tut-keys { font-size: 0.8em; color: var(--muted); margin-top: 10px; }
+  .tutorial-card .tut-keys kbd { background: var(--bg); padding: 2px 7px; border-radius: 3px; border: 1px solid #555; font-family: monospace; }
+  .tutorial-card .btn-start { width: 100%; margin-top: 20px; padding: 14px; font-size: 1.1em; }
 </style>
 </head>
 <body>
+<!-- Tutorial overlay -->
+<div class="tutorial-overlay" id="tutorial">
+  <div class="tutorial-card">
+    <h2>🔥 Wildfire Containment</h2>
+    <p>You are an <strong>incident commander</strong>. A wildfire is spreading across a terrain grid. Your mission: <strong>save structures and contain the fire</strong> using limited resources.</p>
+
+    <div class="tut-section">
+      <h4>Your Tools</h4>
+      <div class="tut-grid">
+        <span class="icon">🪓</span><span class="desc"><strong>Firebreak</strong> — Click an unburned cell to block fire permanently</span>
+        <span class="icon">💧</span><span class="desc"><strong>Water Drop</strong> — Extinguish fire in a radius, temporarily protects cells</span>
+        <span class="icon">🚑</span><span class="desc"><strong>Evacuate</strong> — Save people in houses/hospitals before fire reaches them</span>
+      </div>
+    </div>
+
+    <div class="tut-section">
+      <h4>How Fire Spreads</h4>
+      <p>Fire moves faster <strong>downwind</strong> and <strong>uphill</strong>. Dry grass ignites easily. Moist forest resists. Rock and water never burn. Watch the wind arrow on the grid!</p>
+    </div>
+
+    <div class="tut-section">
+      <h4>Or Let AI Play</h4>
+      <p>Click <strong>🤖 Run AI Agent</strong> to watch a heuristic AI commander make decisions — it explains every move in the action log.</p>
+    </div>
+
+    <div class="tut-keys">
+      Keyboard: <kbd>W</kbd> Firebreak · <kbd>E</kbd> Water · <kbd>R</kbd> Evacuate · <kbd>Space</kbd> Skip turn
+    </div>
+
+    <button class="btn btn-red btn-start" onclick="closeTutorial()">🔥 Start Firefighting</button>
+  </div>
+</div>
+
 <header>
   <h1>🔥 Wildfire Containment</h1>
-  <span class="subtitle">OpenEnv RL Environment — Interactive Mode</span>
+  <span class="subtitle">OpenEnv RL Environment — Interactive Demo</span>
+  <button class="btn" style="margin-left:auto; background:var(--accent2); color:var(--text); font-size:0.8em;" onclick="showTutorial()">❓ How to Play</button>
 </header>
 
 <div class="main">
@@ -243,6 +308,9 @@
       <button class="btn btn-blue" id="btn-auto" onclick="toggleAuto()">▶ Auto</button>
     </div>
     <button class="btn btn-agent" id="btn-agent" onclick="toggleAgent()" style="width:100%;margin-top:6px;background:#9b59b6;color:#fff;padding:10px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:0.9em;">🤖 Run AI Agent</button>
+    <div class="btn-row" style="margin-top:6px;">
+      <button class="btn" id="btn-danger" onclick="toggleDanger()" style="background:#e67e22;color:#fff;flex:1;">🔥 Danger Overlay</button>
+    </div>
     <div class="speed-control">
       <span class="speed-label">Speed</span>
       <input type="range" id="speed" min="50" max="1000" value="300" step="50">
@@ -305,6 +373,7 @@
       <div><span class="swatch" style="background:#d4ac0d;"></span> Firebreak</div>
       <div><span class="swatch" style="background:#85c1e9;"></span> Water Dropped</div>
       <div><span class="swatch" style="background:#fff;border-color:#fff;"></span> House / Hospital</div>
+      <div><span class="swatch" style="background:linear-gradient(90deg,#2ecc71,#f1c40f,#e74c3c);"></span> Danger Overlay (low-high)</div>
     </div>
 
     <h3>Action Log</h3>
@@ -325,6 +394,8 @@ let cellSize = 0;
 let selectedTool = 0;
 let autoInterval = null;
 let done = false;
+let dangerMap = null;
+let showDanger = false;
 
 // Colors
 const VEG_COLORS = ['#4a7c59','#2d5a1e','#1a3d0c','#777','#2980b9'];
@@ -401,6 +472,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'w' || e.key === 'W') selectTool(1);
   if (e.key === 'e' || e.key === 'E') selectTool(2);
   if (e.key === 'r' || e.key === 'R') selectTool(3);
+  if (e.key === 'd' || e.key === 'D') toggleDanger();
   if (e.key === ' ') { e.preventDefault(); stepNoop(); }
 });
 
@@ -538,6 +610,42 @@ function draw() {
     }
   }
 
+  // Danger heatmap overlay
+  if (showDanger && dangerMap) {
+    for (let r = 0; r < N; r++) {
+      for (let c = 0; c < N; c++) {
+        const d = dangerMap[r][c];
+        if (d > 0.01) {
+          // Green (safe) -> Yellow (medium) -> Red (dangerous)
+          let red, green, blue;
+          if (d < 0.5) {
+            // green to yellow
+            const t = d / 0.5;
+            red = Math.floor(255 * t);
+            green = 255;
+            blue = 0;
+          } else {
+            // yellow to red
+            const t = (d - 0.5) / 0.5;
+            red = 255;
+            green = Math.floor(255 * (1 - t));
+            blue = 0;
+          }
+          ctx.fillStyle = `rgba(${red}, ${green}, ${blue}, 0.55)`;
+          ctx.fillRect(c * cs, r * cs, cs, cs);
+          // Show percentage if cells are big enough
+          if (cs >= 20) {
+            ctx.fillStyle = '#fff';
+            ctx.font = `bold ${Math.floor(cs * 0.35)}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`${Math.round(d * 100)}`, c * cs + cs / 2, r * cs + cs / 2);
+          }
+        }
+      }
+    }
+  }
+
   // Wind arrow at top-right
   drawWindArrow();
 }
@@ -621,8 +729,10 @@ canvas.addEventListener('mousemove', e => {
   const elev = state.elevation[row][col].toFixed(1);
   const moist = (state.moisture[row][col] * 100).toFixed(0);
   const evac = state.evacuated[row][col] ? ' ✅ Evacuated' : '';
+  const dangerVal = (showDanger && dangerMap && dangerMap[row] && dangerMap[row][col] > 0)
+    ? `<br>🔥 Ignition risk: ${(dangerMap[row][col] * 100).toFixed(0)}%` : '';
 
-  tooltip.innerHTML = `(${row},${col}) ${veg} · ${fire}<br>Elev: ${elev}m · Moisture: ${moist}%<br>Structure: ${struct}${evac}`;
+  tooltip.innerHTML = `(${row},${col}) ${veg} · ${fire}<br>Elev: ${elev}m · Moisture: ${moist}%<br>Structure: ${struct}${evac}${dangerVal}`;
   tooltip.style.display = 'block';
   tooltip.style.left = (e.clientX - canvas.parentElement.getBoundingClientRect().left + 12) + 'px';
   tooltip.style.top = (e.clientY - canvas.parentElement.getBoundingClientRect().top - 10) + 'px';
@@ -632,7 +742,13 @@ canvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; })
 // ---- Update UI ----
 function updateUI(data) {
   state = data.state || state;
-  draw();
+
+  // Refresh danger map if overlay is active
+  if (showDanger) {
+    fetchDangerMap().then(() => draw());
+  } else {
+    draw();
+  }
 
   const s = state;
   const maxSteps = done ? s.timestep : '—';
@@ -662,6 +778,36 @@ function addLog(cls, msg) {
   div.textContent = msg;
   logBox.prepend(div);
   if (logBox.children.length > 100) logBox.removeChild(logBox.lastChild);
+}
+
+// ---- Tutorial ----
+function closeTutorial() {
+  document.getElementById('tutorial').classList.add('hidden');
+}
+function showTutorial() {
+  document.getElementById('tutorial').classList.remove('hidden');
+}
+
+// ---- Danger Overlay ----
+async function fetchDangerMap() {
+  const res = await fetch(API + '/api/danger_map');
+  const data = await res.json();
+  dangerMap = data.danger_map;
+}
+
+function toggleDanger() {
+  showDanger = !showDanger;
+  const btn = document.getElementById('btn-danger');
+  if (showDanger) {
+    btn.style.background = '#c0392b';
+    btn.textContent = '🔥 Hide Danger';
+    fetchDangerMap().then(() => draw());
+  } else {
+    btn.style.background = '#e67e22';
+    btn.textContent = '🔥 Danger Overlay';
+    dangerMap = null;
+    draw();
+  }
 }
 
 // ---- Init ----
